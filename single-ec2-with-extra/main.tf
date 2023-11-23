@@ -44,11 +44,23 @@ sudo yum install -y cowsay
 
 # Customize the Message of the Day (motd)
 echo "#!/bin/sh" > /etc/update-motd.d/40-cow
-echo 'cowsay "Amazon Linux 2023 AMI - Animals4Life"' >> /etc/update-motd.d/40-cow
+echo 'cowsay "I am a cow."' >> /etc/update-motd.d/40-cow
 chmod 755 /etc/update-motd.d/40-cow
 update-motd
 EOF
   tags = {
     Name = "single_instance_with_extra"
   }
+}
+
+resource "aws_ebs_volume" "instance_ebs" {
+  availability_zone = "us-east-1b"
+  size              = 10
+  type              = "gp3"
+}
+
+resource "aws_volume_attachment" "attach_ebs_to_instance" {
+  device_name = "/dev/xvdf"
+  instance_id = aws_instance.single_instance_with_extra.id
+  volume_id   = aws_ebs_volume.instance_ebs.id
 }
