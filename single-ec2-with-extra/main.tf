@@ -29,11 +29,11 @@ resource "aws_security_group" "instance_sg" {
 }
 
 resource "aws_instance" "single_instance_with_extra" {
-  ami               = "ami-0230bd60aa48260c6" #Amazon Linux 2023
-  instance_type     = "t2.micro"
-  availability_zone = "us-east-1b"
+  ami                    = "ami-0230bd60aa48260c6" #Amazon Linux 2023
+  instance_type          = "t2.micro"
+  availability_zone      = "us-east-1b"
   vpc_security_group_ids = [aws_security_group.instance_sg.id]
-  user_data         = <<EOF
+  user_data              = <<EOF
 #!/bin/bash
 
 # Update the package manager
@@ -51,8 +51,4 @@ EOF
   tags = {
     Name = "single_instance_with_extra"
   }
-}
-
-output "instance_ip_address" {
-  value = aws_instance.single_instance_with_extra.public_ip
 }
