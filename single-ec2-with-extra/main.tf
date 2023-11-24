@@ -2,6 +2,45 @@ provider "aws" {
   region = "us-east-1"
 }
 
+resource "aws_iam_role" "instance_role" {
+  name = "S3ReadOnlyInstanceRole"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Sid    = ""
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "s3_readonly" {
+  name = "S3ReadOnlyPolicy"
+  role = aws_iam_role.instance_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow",
+      Action = [
+        "s3:Get*",
+        "s3:List*",
+        "s3:Describe*",
+      ],
+      Resource = ["*"]
+    }]
+  })
+}
+
+resource "aws_iam_instance_profile" "default" {
+  name = "S3ReadOnlyInstanceProfile"
+  role = aws_iam_role.instance_role.id
+}
+
 resource "aws_security_group" "instance_sg" {
   name        = "InstanceSG"
   description = "test sg for terraform instance"
@@ -51,6 +90,7 @@ EOF
   tags = {
     Name = "single_instance_with_extra"
   }
+  iam_instance_profile = aws_iam_instance_profile.default.id
 }
 
 resource "aws_ebs_volume" "instance_ebs" {
