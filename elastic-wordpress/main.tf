@@ -136,6 +136,8 @@ resource "aws_alb_listener" "default" {
 }
 
 resource "aws_security_group" "instance_sg" {
+  vpc_id = module.vpc.vpc_id
+
   ingress {
     from_port   = 80
     to_port     = 80
@@ -182,16 +184,16 @@ chkconfig nginx on
   }
 }
 
-# resource "aws_autoscaling_group" "default" {
-#   min_size         = 1
-#   desired_capacity = 2
-#   max_size         = 3
+resource "aws_autoscaling_group" "default" {
+  min_size         = 1
+  desired_capacity = 2
+  max_size         = 3
 
-#   availability_zones = ["us-east-1a"]
-#   target_group_arns  = [aws_alb_target_group.default.arn]
+  target_group_arns   = [aws_alb_target_group.default.arn]
+  vpc_zone_identifier = module.vpc.public_subnets
 
-#   launch_template {
-#     id = aws_launch_template.default.id
-#   }
-# }
+  launch_template {
+    id = aws_launch_template.default.id
+  }
+}
 
