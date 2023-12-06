@@ -172,20 +172,64 @@ resource "aws_launch_template" "default" {
   instance_type          = "t2.micro"
   vpc_security_group_ids = [aws_security_group.instance_sg.id]
   user_data = base64encode(<<EOF
-#!/bin/bash
-dnf -y install wget cowsay nginx stress
+#!/bin/bash -xe
 
-echo "#!/bin/sh" > /etc/update-motd.d/40-cow
-echo 'cowsay "Hello World!"' >> /etc/update-motd.d/40-cow
-chmod 755 /etc/update-motd.d/40-cow
-update-motd
+DBPassword=$(aws ssm get-parameters --region us-east-1 --names /A4L/Wordpress/DBPassword --with-decryption --query Parameters[0].Value)
+DBPassword=`echo $DBPassword | sed -e 's/^"//' -e 's/"$//'`
 
-PRIVATE_IP=$(hostname -I)
+DBRootPassword=$(aws ssm get-parameters --region us-east-1 --names /A4L/Wordpress/DBRootPassword --with-decryption --query Parameters[0].Value)
+DBRootPassword=`echo $DBRootPassword | sed -e 's/^"//' -e 's/"$//'`
 
-echo "<h1>Welcome to $PRIVATE_IP</h1>" > /usr/share/nginx/html/index.html
+DBUser=$(aws ssm get-parameters --region us-east-1 --names /A4L/Wordpress/DBUser --query Parameters[0].Value)
+DBUser=`echo $DBUser | sed -e 's/^"//' -e 's/"$//'`
 
-service nginx start
-chkconfig nginx on
+DBName=$(aws ssm get-parameters --region us-east-1 --names /A4L/Wordpress/DBName --query Parameters[0].Value)
+DBName=`echo $DBName | sed -e 's/^"//' -e 's/"$//'`
+
+DBEndpoint=$(aws ssm get-parameters --region us-east-1 --names /A4L/Wordpress/DBEndpoint --query Parameters[0].Value)
+DBEndpoint=`echo $DBEndpoint | sed -e 's/^"//' -e 's/"$//'`
+
+EFSFSID=$(aws ssm get-parameters --region us-east-1 --names /A4L/Wordpress/EFSFSID --query Parameters[0].Value)
+EFSFSID=`echo $EFSFSID | sed -e 's/^"//' -e 's/"$//'`
+
+dnf -y update
+
+dnf install wget php-mysqlnd httpd php-fpm php-mysqli mariadb105-server php-json php php-devel stress amazon-efs-utils -y
+
+systemctl enable httpd
+systemctl start httpd
+
+mkdir -p /var/www/html/wp-content
+chown -R ec2-user:apache /var/www/
+echo -e "$EFSFSID:/ /var/www/html/wp-content efs _netdev,tls,iam 0 0" >> /etc/fstab
+mount_efs() {
+  mount -a -t efs defaults
+}
+
+# Retry the mount command until it succeeds
+until mount_efs; do
+  echo "Retrying to mount EFS..."
+  sleep 5
+done
+
+wget http://wordpress.org/latest.tar.gz -P /var/www/html
+cd /var/www/html
+tar -zxvf latest.tar.gz
+cp -rvf wordpress/* .
+rm -R wordpress
+rm latest.tar.gz
+
+sudo cp ./wp-config-sample.php ./wp-config.php
+sed -i "s/'database_name_here'/'$DBName'/g" wp-config.php
+sed -i "s/'username_here'/'$DBUser'/g" wp-config.php
+sed -i "s/'password_here'/'$DBPassword'/g" wp-config.php
+sed -i "s/'localhost'/'$DBEndpoint'/g" wp-config.php
+
+usermod -a -G apache ec2-user
+chown -R ec2-user:apache /var/www
+chmod 2775 /var/www
+find /var/www -type d -exec chmod 2775 {} \;
+find /var/www -type f -exec chmod 0664 {} \;
   EOF
   )
   update_default_version = true
@@ -197,18 +241,18 @@ chkconfig nginx on
   }
 }
 
-resource "aws_autoscaling_group" "default" {
-  min_size         = 1
-  desired_capacity = 2
-  max_size         = 3
+# resource "aws_autoscaling_group" "default" {
+#   min_size         = 1
+#   desired_capacity = 2
+#   max_size         = 3
 
-  name = "A4LWORDPRESSASG"
+#   name = "A4LWORDPRESSASG"
 
-  target_group_arns   = [aws_alb_target_group.default.arn]
-  vpc_zone_identifier = module.vpc.public_subnets
+#   target_group_arns   = [aws_alb_target_group.default.arn]
+#   vpc_zone_identifier = module.vpc.public_subnets
 
-  launch_template {
-    id = aws_launch_template.default.id
-  }
-}
+#   launch_template {
+#     id = aws_launch_template.default.id
+#   }
+# }
 
