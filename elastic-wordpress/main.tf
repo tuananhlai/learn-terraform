@@ -8,14 +8,15 @@ module "vpc" {
   name = "ElasticWordpressVPC"
   cidr = "10.16.0.0/16"
 
-  azs                     = ["us-east-1a", "us-east-1b", "us-east-1c"]
-  public_subnets          = ["10.16.48.0/20", "10.16.112.0/20", "10.16.176.0/20"]
-  public_subnet_names     = ["sn-pub-A", "sn-pub-B", "sn-pub-C"]
-  private_subnets         = ["10.16.32.0/20", "10.16.96.0/20", "10.16.160.0/20"]
-  private_subnet_names    = ["sn-app-A", "sn-app-B", "sn-app-C"]
-  database_subnets        = ["10.16.16.0/20", "10.16.80.0/20", "10.16.144.0/20"]
-  database_subnet_names   = ["sn-db-A", "sn-db-B", "sn-db-C"]
-  map_public_ip_on_launch = true
+  azs                        = ["us-east-1a", "us-east-1b", "us-east-1c"]
+  public_subnets             = ["10.16.48.0/20", "10.16.112.0/20", "10.16.176.0/20"]
+  public_subnet_names        = ["sn-pub-A", "sn-pub-B", "sn-pub-C"]
+  private_subnets            = ["10.16.32.0/20", "10.16.96.0/20", "10.16.160.0/20"]
+  private_subnet_names       = ["sn-app-A", "sn-app-B", "sn-app-C"]
+  database_subnets           = ["10.16.16.0/20", "10.16.80.0/20", "10.16.144.0/20"]
+  database_subnet_names      = ["sn-db-A", "sn-db-B", "sn-db-C"]
+  database_subnet_group_name = "WordPressRDSSubNetGroup"
+  map_public_ip_on_launch    = true
   igw_tags = {
     Name = "igw-ElasticWordpressVPC"
   }
@@ -38,6 +39,66 @@ resource "aws_db_instance" "wordpress" {
   engine_version       = "8.0.32"
   skip_final_snapshot  = true
   allocated_storage    = 10
+}
+
+
+resource "aws_efs_file_system" "default" {
+  tags = {
+    Name = "A4L-WORDPRESS-CONTENT"
+  }
+}
+
+resource "aws_efs_mount_target" "default" {
+  for_each = {
+    0 = module.vpc.private_subnets[0]
+    1 = module.vpc.private_subnets[1]
+    2 = module.vpc.private_subnets[2]
+  }
+  file_system_id = aws_efs_file_system.default.id
+  subnet_id      = each.value
+}
+
+resource "aws_security_group" "lb_sg" {
+  vpc_id = module.vpc.vpc_id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::0/0"]
+  }
+}
+
+resource "aws_alb" "default" {
+  name            = "A4LWORDPRESSALB"
+  subnets         = module.vpc.public_subnets
+  security_groups = [aws_security_group.lb_sg.id]
+  internal        = false
+}
+
+resource "aws_alb_target_group" "default" {
+  name     = "A4LWORDPRESSALBTG"
+  vpc_id   = module.vpc.vpc_id
+  port     = 80
+  protocol = "HTTP"
+}
+
+resource "aws_alb_listener" "default" {
+  load_balancer_arn = aws_alb.default.arn
+  port              = 80
+  protocol          = "HTTP"
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_alb_target_group.default.arn
+  }
 }
 
 resource "aws_ssm_parameter" "wordpress" {
@@ -71,6 +132,12 @@ resource "aws_ssm_parameter" "wordpress" {
       type        = "String"
       value       = aws_db_instance.wordpress.address # use hostname only to be true to the lab
       description = "Wordpress Endpoint Name"
+    },
+    "albDnsName" = {
+      name        = "/A4L/Wordpress/ALBDNSNAME"
+      type        = "String"
+      value       = aws_alb.default.dns_name
+      description = "DNS Name of the Application Load Balancer for wordpress"
     }
   }
   tier        = "Standard"
@@ -80,60 +147,6 @@ resource "aws_ssm_parameter" "wordpress" {
   description = each.value.description
 }
 
-resource "aws_efs_file_system" "default" {
-
-}
-
-resource "aws_efs_mount_target" "default" {
-  for_each = {
-    0 = module.vpc.private_subnets[0]
-    1 = module.vpc.private_subnets[1]
-    2 = module.vpc.private_subnets[2]
-  }
-  file_system_id = aws_efs_file_system.default.id
-  subnet_id      = each.value
-}
-
-resource "aws_security_group" "lb_sg" {
-  vpc_id = module.vpc.vpc_id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port        = 0
-    to_port          = 0
-    protocol         = "-1"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::0/0"]
-  }
-}
-
-resource "aws_alb" "default" {
-  subnets         = module.vpc.public_subnets
-  security_groups = [aws_security_group.lb_sg.id]
-  internal        = false
-}
-
-resource "aws_alb_target_group" "default" {
-  vpc_id   = module.vpc.vpc_id
-  port     = 80
-  protocol = "HTTP"
-}
-
-resource "aws_alb_listener" "default" {
-  load_balancer_arn = aws_alb.default.arn
-  port              = 80
-  protocol          = "HTTP"
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_alb_target_group.default.arn
-  }
-}
 
 resource "aws_security_group" "instance_sg" {
   vpc_id = module.vpc.vpc_id
@@ -188,6 +201,8 @@ resource "aws_autoscaling_group" "default" {
   min_size         = 1
   desired_capacity = 2
   max_size         = 3
+
+  name = "A4LWORDPRESSASG"
 
   target_group_arns   = [aws_alb_target_group.default.arn]
   vpc_zone_identifier = module.vpc.public_subnets
