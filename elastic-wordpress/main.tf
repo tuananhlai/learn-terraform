@@ -41,6 +41,33 @@ resource "aws_db_instance" "wordpress" {
   allocated_storage    = 10
 }
 
+resource "aws_security_group" "instance_sg" {
+  vpc_id = module.vpc.vpc_id
+
+  ingress {
+    # http
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    # nfs
+    from_port   = 2049
+    to_port     = 2049
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::0/0"]
+  }
+}
 
 resource "aws_efs_file_system" "default" {
   tags = {
@@ -54,8 +81,9 @@ resource "aws_efs_mount_target" "default" {
     1 = module.vpc.private_subnets[1]
     2 = module.vpc.private_subnets[2]
   }
-  file_system_id = aws_efs_file_system.default.id
-  subnet_id      = each.value
+  file_system_id  = aws_efs_file_system.default.id
+  subnet_id       = each.value
+  security_groups = [aws_security_group.instance_sg.id]
 }
 
 resource "aws_security_group" "lb_sg" {
@@ -139,6 +167,12 @@ resource "aws_ssm_parameter" "wordpress" {
       value       = aws_alb.default.dns_name
       description = "DNS Name of the Application Load Balancer for wordpress"
     }
+    "efsFsId" = {
+      name        = "/A4L/Wordpress/EFSFSID"
+      type        = "String"
+      value       = aws_efs_file_system.default.id
+      description = ""
+    }
   }
   tier        = "Standard"
   name        = each.value.name
@@ -148,29 +182,50 @@ resource "aws_ssm_parameter" "wordpress" {
 }
 
 
-resource "aws_security_group" "instance_sg" {
-  vpc_id = module.vpc.vpc_id
 
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+resource "aws_iam_role" "instance" {
+  name = "A4LVPC-WordpressInstanceRole"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Sid    = ""
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+}
 
-  egress {
-    from_port        = 0
-    to_port          = 0
-    protocol         = "-1"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::0/0"]
-  }
+resource "aws_iam_role_policy" "ssm_get_parameters" {
+  role = aws_iam_role.instance.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow",
+      Action = [
+        "ssm:GetParameters"
+      ],
+      Resource = ["*"]
+    }]
+  })
+}
+
+resource "aws_iam_instance_profile" "default" {
+  name = "A4LVPC-WordpressInstanceProfile"
+  role = aws_iam_role.instance.id
 }
 
 resource "aws_launch_template" "default" {
   image_id               = "ami-0230bd60aa48260c6"
   instance_type          = "t2.micro"
   vpc_security_group_ids = [aws_security_group.instance_sg.id]
+  iam_instance_profile {
+    arn = aws_iam_instance_profile.default.arn
+  }
   user_data = base64encode(<<EOF
 #!/bin/bash -xe
 
