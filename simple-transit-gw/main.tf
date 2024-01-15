@@ -132,7 +132,7 @@ resource "aws_ec2_instance_connect_endpoint" "default" {
   subnet_id          = each.value.subnet_id
 }
 
-resource "aws_route" "vpca_transit_gw" {
+resource "aws_route" "vpc_transit_gw_routes" {
   # NOTE: In order to send traffic between two VPCs, routes to transit gateway must be
   # added in BOTH source and destination VPC's route tables.
   for_each = {
