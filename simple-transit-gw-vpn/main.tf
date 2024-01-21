@@ -165,92 +165,124 @@ resource "aws_customer_gateway" "default" {
   type       = "ipsec.1"
 }
 
-# resource "aws_vpn_connection" "default" {
-#   customer_gateway_id = aws_customer_gateway.default.id
-#   transit_gateway_id  = aws_ec2_transit_gateway.default.id
-#   type                = aws_customer_gateway.default.type
-# }
+resource "aws_vpn_connection" "default" {
+  customer_gateway_id = aws_customer_gateway.default.id
+  transit_gateway_id  = aws_ec2_transit_gateway.default.id
+  type                = aws_customer_gateway.default.type
+}
 
-# locals {
-#   tunnel1_neighbor_ip_address = cidrhost(aws_vpn_connection.default.tunnel1_vgw_inside_address)
-#   tunnel2_neighbor_ip_address = cidrhost(aws_vpn_connection.default.tunnel2_vgw_inside_address)
-# }
+locals {
+  tunnel1_neighbor_ip_address  = aws_vpn_connection.default.tunnel1_vgw_inside_address
+  tunnel2_neighbor_ip_address  = aws_vpn_connection.default.tunnel2_vgw_inside_address
+  tunnel1_vgw_inside_addresses = "${aws_vpn_connection.default.tunnel1_vgw_inside_address}/30"
+  tunnel1_cgw_inside_addresses = "${aws_vpn_connection.default.tunnel1_cgw_inside_address}/30"
+  tunnel2_vgw_inside_addresses = "${aws_vpn_connection.default.tunnel2_vgw_inside_address}/30"
+  tunnel2_cgw_inside_addresses = "${aws_vpn_connection.default.tunnel2_cgw_inside_address}/30"
+}
 
-# resource "aws_secretsmanager_secret" "preshared_keys" {
-#   for_each = {
-#     "onPrem" = {
-#       name_prefix = "site2site/onPremPsk"
-#     }
-#     "aws" = {
-#       name_prefix = "site2site/awsPsk"
-#     }
-#   }
-#   name_prefix = each.value.name_prefix
-# }
+resource "aws_secretsmanager_secret" "preshared_keys" {
+  for_each = {
+    "onPrem" = {
+      name_prefix = "site2site/onPremPsk"
+    }
+    "aws" = {
+      name_prefix = "site2site/awsPsk"
+    }
+  }
+  name_prefix = each.value.name_prefix
+}
 
-# resource "aws_secretsmanager_secret_version" "preshared_keys" {
-#   for_each = {
-#     "onPrem" = {
-#       secret_id = aws_secretsmanager_secret.preshared_keys["onPrem"].id
-#       psk       = aws_vpn_connection.default.tunnel1_preshared_key
-#     }
-#     "aws" = {
-#       secret_id = aws_secretsmanager_secret.preshared_keys["aws"].id
-#       psk       = aws_vpn_connection.default.tunnel2_preshared_key
-#     }
-#   }
-#   secret_id     = each.value.secret_id
-#   secret_string = <<EOF
-#   {
-#     "psk": "${each.value.psk}"
-#   }
-#   EOF
-# }
+resource "aws_secretsmanager_secret_version" "preshared_keys" {
+  for_each = {
+    "onPrem" = {
+      secret_id = aws_secretsmanager_secret.preshared_keys["onPrem"].id
+      psk       = aws_vpn_connection.default.tunnel1_preshared_key
+    }
+    "aws" = {
+      secret_id = aws_secretsmanager_secret.preshared_keys["aws"].id
+      psk       = aws_vpn_connection.default.tunnel2_preshared_key
+    }
+  }
+  secret_id     = each.value.secret_id
+  secret_string = <<EOF
+  {
+    "psk": "${each.value.psk}"
+  }
+  EOF
+}
 
-# resource "aws_cloudformation_stack" "name" {
-#   name = "VpnGateway"
-#   parameters = {
-#     pTunnel1PskSecretName        = aws_secretsmanager_secret.preshared_keys["onPrem"].name
-#     pTunnel1VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel1_address
-#     pTunnel1CgwInsideIpAddress   = aws_vpn_connection.default.tunnel1_cgw_inside_address
-#     pTunnel1VgwInsideIpAddress   = aws_vpn_connection.default.tunnel1_vgw_inside_address
-#     pTunnel1VgwBgpAsn            = aws_vpn_connection.default.tunnel1_bgp_asn
-#     pTunnel1BgpNeighborIpAddress = local.tunnel1_neighbor_ip_address
-#     pTunnel2PskSecretName        = aws_secretsmanager_secret.preshared_keys["aws"].name
-#     pTunnel2VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel2_address
-#     pTunnel2CgwInsideIpAddress   = aws_vpn_connection.default.tunnel2_cgw_inside_address
-#     pTunnel2VgwInsideIpAddress   = aws_vpn_connection.default.tunnel2_vgw_inside_address
-#     pTunnel2VgwBgpAsn            = aws_vpn_connection.default.tunnel2_bgp_asn
-#     pTunnel2BgpNeighborIpAddress = local.tunnel2_neighbor_ip_address
-#     pUseElasticIp                = true
-#     pEipAllocationId             = aws_eip.local.allocation_id
-#     pLocalBgpAsn                 = aws_vpn_connection.default.tunnel1_bgp_asn
-#     pVpcId                       = module.local_vpc.vpc_id
-#     pVpcCidr                     = module.local_vpc.vpc_cidr_block
-#     pSubnetId                    = module.local_vpc.public_subnets[0]
-#   }
-#   template_body = file("${path.module}/stack.yaml")
-# }
+resource "aws_cloudformation_stack" "strong_swan_vpn_gateway" {
+  name         = "VpnGateway"
+  capabilities = ["CAPABILITY_NAMED_IAM"]
+  parameters = {
+    pTunnel1PskSecretName        = aws_secretsmanager_secret.preshared_keys["onPrem"].name
+    pTunnel1VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel1_address
+    pTunnel1CgwInsideIpAddress   = local.tunnel1_cgw_inside_addresses
+    pTunnel1VgwInsideIpAddress   = local.tunnel1_vgw_inside_addresses
+    pTunnel1VgwBgpAsn            = aws_vpn_connection.default.tunnel1_bgp_asn
+    pTunnel1BgpNeighborIpAddress = local.tunnel1_neighbor_ip_address
+    pTunnel2PskSecretName        = aws_secretsmanager_secret.preshared_keys["aws"].name
+    pTunnel2VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel2_address
+    pTunnel2CgwInsideIpAddress   = local.tunnel2_cgw_inside_addresses
+    pTunnel2VgwInsideIpAddress   = local.tunnel2_vgw_inside_addresses
+    pTunnel2VgwBgpAsn            = aws_vpn_connection.default.tunnel2_bgp_asn
+    pTunnel2BgpNeighborIpAddress = local.tunnel2_neighbor_ip_address
+    pUseElasticIp                = "true"
+    pEipAllocationId             = aws_eip.local.allocation_id
+    pLocalBgpAsn                 = aws_vpn_connection.default.tunnel1_bgp_asn
+    pVpcId                       = module.local_vpc.vpc_id
+    pVpcCidr                     = module.local_vpc.vpc_cidr_block
+    pSubnetId                    = module.local_vpc.public_subnets[0]
+  }
+  template_body = file("${path.module}/stack.yaml")
+}
 
-# output "stack_parameters" {
-#   value = {
-#     pTunnel1PskSecretName        = aws_secretsmanager_secret.preshared_keys["onPrem"].name
-#     pTunnel1VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel1_address
-#     pTunnel1CgwInsideIpAddress   = aws_vpn_connection.default.tunnel1_cgw_inside_address
-#     pTunnel1VgwInsideIpAddress   = aws_vpn_connection.default.tunnel1_vgw_inside_address
-#     pTunnel1VgwBgpAsn            = aws_vpn_connection.default.tunnel1_bgp_asn
-#     pTunnel1BgpNeighborIpAddress = local.tunnel1_neighbor_ip_address
-#     pTunnel2PskSecretName        = aws_secretsmanager_secret.preshared_keys["aws"].name
-#     pTunnel2VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel2_address
-#     pTunnel2CgwInsideIpAddress   = aws_vpn_connection.default.tunnel2_cgw_inside_address
-#     pTunnel2VgwInsideIpAddress   = aws_vpn_connection.default.tunnel2_vgw_inside_address
-#     pTunnel2VgwBgpAsn            = aws_vpn_connection.default.tunnel2_bgp_asn
-#     pTunnel2BgpNeighborIpAddress = local.tunnel2_neighbor_ip_address
-#     pUseElasticIp                = true
-#     pEipAllocationId             = aws_eip.local.allocation_id
-#     pLocalBgpAsn                 = aws_vpn_connection.default.tunnel1_bgp_asn
-#     pVpcId                       = module.local_vpc.vpc_id
-#     pVpcCidr                     = module.local_vpc.vpc_cidr_block
-#     pSubnetId                    = module.local_vpc.public_subnets[0]
-#   }
-# }
+output "stack_parameters" {
+  value = {
+    pTunnel1PskSecretName        = aws_secretsmanager_secret.preshared_keys["onPrem"].name
+    pTunnel1VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel1_address
+    pTunnel1CgwInsideIpAddress   = local.tunnel1_cgw_inside_addresses
+    pTunnel1VgwInsideIpAddress   = local.tunnel1_vgw_inside_addresses
+    pTunnel1VgwBgpAsn            = aws_vpn_connection.default.tunnel1_bgp_asn
+    pTunnel1BgpNeighborIpAddress = local.tunnel1_neighbor_ip_address
+    pTunnel2PskSecretName        = aws_secretsmanager_secret.preshared_keys["aws"].name
+    pTunnel2VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel2_address
+    pTunnel2CgwInsideIpAddress   = local.tunnel2_cgw_inside_addresses
+    pTunnel2VgwInsideIpAddress   = local.tunnel2_vgw_inside_addresses
+    pTunnel2VgwBgpAsn            = aws_vpn_connection.default.tunnel2_bgp_asn
+    pTunnel2BgpNeighborIpAddress = local.tunnel2_neighbor_ip_address
+    pUseElasticIp                = "true"
+    pEipAllocationId             = aws_eip.local.allocation_id
+    pLocalBgpAsn                 = aws_vpn_connection.default.tunnel1_bgp_asn
+    pVpcId                       = module.local_vpc.vpc_id
+    pVpcCidr                     = module.local_vpc.vpc_cidr_block
+    pSubnetId                    = module.local_vpc.public_subnets[0]
+  }
+}
+
+locals {
+  vpnGatewayPrivateIp = aws_cloudformation_stack.strong_swan_vpn_gateway.outputs["vpnGatewayPrivateIp"]
+  vpnGatewayId        = aws_cloudformation_stack.strong_swan_vpn_gateway.outputs["vpnGatewayInstanceId"]
+}
+
+output "private_ip_addresses" {
+  value = {
+    vpnGatewayPrivateIp     = local.vpnGatewayPrivateIp
+    vpnGatewayInstanceId    = local.vpnGatewayId
+    remoteInstancePrivateIp = aws_instance.remote.private_ip
+  }
+}
+
+resource "aws_network_interface" "vpn_gateway" {
+  subnet_id = module.local_vpc.public_subnets[0]
+  attachment {
+    instance = local.vpnGatewayId
+    device_index = 1
+  }
+}
+
+resource "aws_route" "local" {
+  route_table_id         = module.local_vpc.public_route_table_ids[0]
+  destination_cidr_block = module.vpc.vpc_cidr_block
+  network_interface_id   = aws_network_interface.vpn_gateway.id
+}
