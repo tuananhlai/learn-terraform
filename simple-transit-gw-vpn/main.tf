@@ -16,38 +16,44 @@ module "vpc" {
   private_subnets = [cidrsubnet(local.aws_vpc_cidr, 4, 0)]
 }
 
-resource "aws_security_group" "instance_sg" {
-  name_prefix = "RemoteInstanceSg"
-  vpc_id      = module.vpc.vpc_id
+module "remote_instance_sg" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "5.1.0"
 
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  vpc_id          = module.vpc.vpc_id
+  name            = "RemoteInstanceSg"
+  use_name_prefix = true
 
-  ingress {
-    from_port   = 8
-    to_port     = 0
-    protocol    = "icmp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  ingress_with_cidr_blocks = [
+    {
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      cidr_blocks = "0.0.0.0/0"
+    },
+    {
+      from_port   = 8
+      to_port     = 0
+      protocol    = "icmp"
+      cidr_blocks = "0.0.0.0/0"
+    },
+    {
+      from_port   = 80
+      to_port     = 80
+      protocol    = "tcp"
+      cidr_blocks = "0.0.0.0/0"
+    }
+  ]
 
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    protocol         = "-1"
-    from_port        = 0
-    to_port          = 0
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::0/0"]
-  }
+  egress_with_cidr_blocks = [
+    {
+      protocol         = "-1"
+      from_port        = 0
+      to_port          = 0
+      cidr_blocks      = "0.0.0.0/0"
+      ipv6_cidr_blocks = "::0/0"
+    }
+  ]
 }
 
 # resource "aws_ec2_instance_connect_endpoint" "remote" {
@@ -61,7 +67,7 @@ resource "aws_instance" "remote" {
   tags = {
     Name = "RemoteInstance"
   }
-  vpc_security_group_ids      = [aws_security_group.instance_sg.id]
+  vpc_security_group_ids      = [module.remote_instance_sg.security_group_id]
   user_data                   = <<EOF
 #!/bin/bash
 dnf -y install wget cowsay nginx
@@ -92,24 +98,32 @@ module "local_vpc" {
   map_public_ip_on_launch = true
 }
 
-resource "aws_security_group" "local_allow_ssh" {
-  name_prefix = "LocalInstanceSg"
-  vpc_id      = module.local_vpc.vpc_id
+module "local_instance_sg" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "5.1.0"
 
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  vpc_id          = module.local_vpc.vpc_id
+  name            = "LocalInstanceSg"
+  use_name_prefix = true
 
-  egress {
-    protocol         = "-1"
-    from_port        = 0
-    to_port          = 0
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::0/0"]
-  }
+  ingress_with_cidr_blocks = [
+    {
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      cidr_blocks = "0.0.0.0/0"
+    }
+  ]
+
+  egress_with_cidr_blocks = [
+    {
+      protocol         = "-1"
+      from_port        = 0
+      to_port          = 0
+      cidr_blocks      = "0.0.0.0/0"
+      ipv6_cidr_blocks = "::0/0"
+    }
+  ]
 }
 
 # Simulate the customer gateway side using a public EC2 instance.
@@ -120,7 +134,7 @@ resource "aws_instance" "local" {
   tags = {
     Name = "LocalInstance"
   }
-  vpc_security_group_ids = [aws_security_group.local_allow_ssh.id]
+  vpc_security_group_ids = [module.local_instance_sg.security_group_id]
 }
 
 resource "aws_eip" "local" {
