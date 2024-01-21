@@ -7,10 +7,12 @@ locals {
   local_vpc_cidr = "10.1.0.0/16"
 }
 
+//=================REMOTE NETWORK=================
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.5.1"
 
+  name            = "RemoteNetwork"
   azs             = ["us-east-1a"]
   cidr            = local.aws_vpc_cidr
   private_subnets = [cidrsubnet(local.aws_vpc_cidr, 4, 0)]
@@ -56,10 +58,6 @@ module "remote_instance_sg" {
   ]
 }
 
-# resource "aws_ec2_instance_connect_endpoint" "remote" {
-#   subnet_id = module.vpc.private_subnets[0]
-# }
-
 resource "aws_instance" "remote" {
   ami           = "ami-0230bd60aa48260c6" #Amazon Linux 2023
   instance_type = "t2.micro"
@@ -67,22 +65,7 @@ resource "aws_instance" "remote" {
   tags = {
     Name = "RemoteInstance"
   }
-  vpc_security_group_ids      = [module.remote_instance_sg.security_group_id]
-  user_data                   = <<EOF
-#!/bin/bash
-dnf -y install wget cowsay nginx
-
-echo "#!/bin/sh" > /etc/update-motd.d/40-cow
-echo 'cowsay "Hello World!"' >> /etc/update-motd.d/40-cow
-chmod 755 /etc/update-motd.d/40-cow
-update-motd
-
-echo "<h1>Welcome!</h1>" > /usr/share/nginx/html/index.html
-
-service nginx start
-chkconfig nginx on
-EOF
-  user_data_replace_on_change = true
+  vpc_security_group_ids = [module.remote_instance_sg.security_group_id]
 }
 
 
@@ -92,6 +75,7 @@ module "local_vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.5.1"
 
+  name                    = "OnPremiseNetwork"
   azs                     = ["us-east-1b"]
   cidr                    = local.local_vpc_cidr
   public_subnets          = [cidrsubnet(local.local_vpc_cidr, 4, 0)]
@@ -211,6 +195,9 @@ resource "aws_secretsmanager_secret_version" "preshared_keys" {
   EOF
 }
 
+# Terraform might get stuck in "Still creating..." for this resource.
+# I'm not sure how to fix it, other than cancelling the operation
+# and rerun `terraform apply`.
 resource "aws_cloudformation_stack" "strong_swan_vpn_gateway" {
   name         = "VpnGateway"
   capabilities = ["CAPABILITY_NAMED_IAM"]
@@ -234,7 +221,7 @@ resource "aws_cloudformation_stack" "strong_swan_vpn_gateway" {
     pVpcCidr                     = module.local_vpc.vpc_cidr_block
     pSubnetId                    = module.local_vpc.public_subnets[0]
   }
-  template_body = file("${path.module}/stack.yaml")
+  template_body      = file("${path.module}/stack.yaml")
 }
 
 output "stack_parameters" {
@@ -261,28 +248,31 @@ output "stack_parameters" {
 }
 
 locals {
-  vpnGatewayPrivateIp = aws_cloudformation_stack.strong_swan_vpn_gateway.outputs["vpnGatewayPrivateIp"]
-  vpnGatewayId        = aws_cloudformation_stack.strong_swan_vpn_gateway.outputs["vpnGatewayInstanceId"]
+  vpnGatewayId = aws_cloudformation_stack.strong_swan_vpn_gateway.outputs["vpnGatewayInstanceId"]
 }
 
 output "private_ip_addresses" {
   value = {
-    vpnGatewayPrivateIp     = local.vpnGatewayPrivateIp
-    vpnGatewayInstanceId    = local.vpnGatewayId
     remoteInstancePrivateIp = aws_instance.remote.private_ip
   }
 }
 
-resource "aws_network_interface" "vpn_gateway" {
-  subnet_id = module.local_vpc.public_subnets[0]
-  attachment {
-    instance = local.vpnGatewayId
-    device_index = 1
-  }
+# Fetch the information about the VPN Gateway Instance
+# created by the CloudFormation stack above.
+data "aws_instance" "vpn_gateway" {
+  instance_id = local.vpnGatewayId
 }
 
 resource "aws_route" "local" {
   route_table_id         = module.local_vpc.public_route_table_ids[0]
   destination_cidr_block = module.vpc.vpc_cidr_block
-  network_interface_id   = aws_network_interface.vpn_gateway.id
+  # The original network interface must be used instead of a new network interface.
+  network_interface_id   = data.aws_instance.vpn_gateway.network_interface_id
 }
+
+# TEST:
+# - Connect into `LocalInstance`.
+# - Using output.private_ip_addresses.remoteInstancePrivateIp, run `ping {remote_instance_private_ip}`.
+#   You should be able to ping the remote instance.
+# - If the previous step does not succeed, see the original blog post from AWS (link in
+#   the README.md) for debugging.

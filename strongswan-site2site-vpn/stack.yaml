@@ -1015,8 +1015,5 @@ Resources:
       RetentionInDays: 30
 
 Outputs:
-  vpnGatewayPrivateIp:
-    Description: "Private IP address of the VPN Gateway"
-    Value: !GetAtt rVpnGateway.PrivateIp
   vpnGatewayInstanceId:
     Value: !Ref rVpnGateway
