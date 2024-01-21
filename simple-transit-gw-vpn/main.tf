@@ -49,9 +49,9 @@ resource "aws_security_group" "instance_sg" {
   }
 }
 
-resource "aws_ec2_instance_connect_endpoint" "remote" {
-  subnet_id = module.vpc.private_subnets[0]
-}
+# resource "aws_ec2_instance_connect_endpoint" "remote" {
+#   subnet_id = module.vpc.private_subnets[0]
+# }
 
 resource "aws_instance" "remote" {
   ami           = "ami-0230bd60aa48260c6" #Amazon Linux 2023
@@ -127,30 +127,114 @@ resource "aws_eip" "local" {
 
 // ===================SETUP VPN=====================
 
-resource "aws_ec2_transit_gateway" "default" {
+# resource "aws_ec2_transit_gateway" "default" {
 
-}
+# }
 
-resource "aws_ec2_transit_gateway_vpc_attachment" "default" {
-  transit_gateway_id = aws_ec2_transit_gateway.default.id
-  vpc_id             = module.vpc.vpc_id
-  subnet_ids         = [module.vpc.private_subnets[0]]
-}
+# resource "aws_ec2_transit_gateway_vpc_attachment" "default" {
+#   transit_gateway_id = aws_ec2_transit_gateway.default.id
+#   vpc_id             = module.vpc.vpc_id
+#   subnet_ids         = [module.vpc.private_subnets[0]]
+# }
 
-resource "aws_route" "vpc_transit_gw" {
-  route_table_id         = module.vpc.private_route_table_ids[0]
-  destination_cidr_block = local.local_vpc_cidr
-  transit_gateway_id     = aws_ec2_transit_gateway.default.id
-}
+# resource "aws_route" "vpc_transit_gw" {
+#   route_table_id         = module.vpc.private_route_table_ids[0]
+#   destination_cidr_block = local.local_vpc_cidr
+#   transit_gateway_id     = aws_ec2_transit_gateway.default.id
+# }
 
-resource "aws_customer_gateway" "default" {
-  bgp_asn    = 65000
-  ip_address = aws_eip.local.public_ip
-  type       = "ipsec.1"
-}
+# resource "aws_customer_gateway" "default" {
+#   bgp_asn    = 65000
+#   ip_address = aws_eip.local.public_ip
+#   type       = "ipsec.1"
+# }
 
-resource "aws_vpn_connection" "default" {
-  customer_gateway_id = aws_customer_gateway.default.id
-  transit_gateway_id  = aws_ec2_transit_gateway.default.id
-  type                = aws_customer_gateway.default.type
-}
+# resource "aws_vpn_connection" "default" {
+#   customer_gateway_id = aws_customer_gateway.default.id
+#   transit_gateway_id  = aws_ec2_transit_gateway.default.id
+#   type                = aws_customer_gateway.default.type
+# }
+
+# locals {
+#   tunnel1_neighbor_ip_address = cidrhost(aws_vpn_connection.default.tunnel1_vgw_inside_address)
+#   tunnel2_neighbor_ip_address = cidrhost(aws_vpn_connection.default.tunnel2_vgw_inside_address)
+# }
+
+# resource "aws_secretsmanager_secret" "preshared_keys" {
+#   for_each = {
+#     "onPrem" = {
+#       name_prefix = "site2site/onPremPsk"
+#     }
+#     "aws" = {
+#       name_prefix = "site2site/awsPsk"
+#     }
+#   }
+#   name_prefix = each.value.name_prefix
+# }
+
+# resource "aws_secretsmanager_secret_version" "preshared_keys" {
+#   for_each = {
+#     "onPrem" = {
+#       secret_id = aws_secretsmanager_secret.preshared_keys["onPrem"].id
+#       psk       = aws_vpn_connection.default.tunnel1_preshared_key
+#     }
+#     "aws" = {
+#       secret_id = aws_secretsmanager_secret.preshared_keys["aws"].id
+#       psk       = aws_vpn_connection.default.tunnel2_preshared_key
+#     }
+#   }
+#   secret_id     = each.value.secret_id
+#   secret_string = <<EOF
+#   {
+#     "psk": "${each.value.psk}"
+#   }
+#   EOF
+# }
+
+# resource "aws_cloudformation_stack" "name" {
+#   name = "VpnGateway"
+#   parameters = {
+#     pTunnel1PskSecretName        = aws_secretsmanager_secret.preshared_keys["onPrem"].name
+#     pTunnel1VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel1_address
+#     pTunnel1CgwInsideIpAddress   = aws_vpn_connection.default.tunnel1_cgw_inside_address
+#     pTunnel1VgwInsideIpAddress   = aws_vpn_connection.default.tunnel1_vgw_inside_address
+#     pTunnel1VgwBgpAsn            = aws_vpn_connection.default.tunnel1_bgp_asn
+#     pTunnel1BgpNeighborIpAddress = local.tunnel1_neighbor_ip_address
+#     pTunnel2PskSecretName        = aws_secretsmanager_secret.preshared_keys["aws"].name
+#     pTunnel2VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel2_address
+#     pTunnel2CgwInsideIpAddress   = aws_vpn_connection.default.tunnel2_cgw_inside_address
+#     pTunnel2VgwInsideIpAddress   = aws_vpn_connection.default.tunnel2_vgw_inside_address
+#     pTunnel2VgwBgpAsn            = aws_vpn_connection.default.tunnel2_bgp_asn
+#     pTunnel2BgpNeighborIpAddress = local.tunnel2_neighbor_ip_address
+#     pUseElasticIp                = true
+#     pEipAllocationId             = aws_eip.local.allocation_id
+#     pLocalBgpAsn                 = aws_vpn_connection.default.tunnel1_bgp_asn
+#     pVpcId                       = module.local_vpc.vpc_id
+#     pVpcCidr                     = module.local_vpc.vpc_cidr_block
+#     pSubnetId                    = module.local_vpc.public_subnets[0]
+#   }
+#   template_body = file("${path.module}/stack.yaml")
+# }
+
+# output "stack_parameters" {
+#   value = {
+#     pTunnel1PskSecretName        = aws_secretsmanager_secret.preshared_keys["onPrem"].name
+#     pTunnel1VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel1_address
+#     pTunnel1CgwInsideIpAddress   = aws_vpn_connection.default.tunnel1_cgw_inside_address
+#     pTunnel1VgwInsideIpAddress   = aws_vpn_connection.default.tunnel1_vgw_inside_address
+#     pTunnel1VgwBgpAsn            = aws_vpn_connection.default.tunnel1_bgp_asn
+#     pTunnel1BgpNeighborIpAddress = local.tunnel1_neighbor_ip_address
+#     pTunnel2PskSecretName        = aws_secretsmanager_secret.preshared_keys["aws"].name
+#     pTunnel2VgwOutsideIpAddress  = aws_vpn_connection.default.tunnel2_address
+#     pTunnel2CgwInsideIpAddress   = aws_vpn_connection.default.tunnel2_cgw_inside_address
+#     pTunnel2VgwInsideIpAddress   = aws_vpn_connection.default.tunnel2_vgw_inside_address
+#     pTunnel2VgwBgpAsn            = aws_vpn_connection.default.tunnel2_bgp_asn
+#     pTunnel2BgpNeighborIpAddress = local.tunnel2_neighbor_ip_address
+#     pUseElasticIp                = true
+#     pEipAllocationId             = aws_eip.local.allocation_id
+#     pLocalBgpAsn                 = aws_vpn_connection.default.tunnel1_bgp_asn
+#     pVpcId                       = module.local_vpc.vpc_id
+#     pVpcCidr                     = module.local_vpc.vpc_cidr_block
+#     pSubnetId                    = module.local_vpc.public_subnets[0]
+#   }
+# }
