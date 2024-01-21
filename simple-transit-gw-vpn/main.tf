@@ -3,30 +3,12 @@ provider "aws" {
 }
 
 module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.5.1"
 
   azs             = ["us-east-1a"]
   cidr            = "10.0.0.0/16"
   private_subnets = ["10.0.0.0/20"]
-}
-
-resource "aws_security_group" "allow_ssh" {
-  vpc_id = module.vpc.vpc_id
-
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    protocol         = "-1"
-    from_port        = 0
-    to_port          = 0
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::0/0"]
-  }
 }
 
 resource "aws_security_group" "instance_sg" {
@@ -60,11 +42,6 @@ resource "aws_security_group" "instance_sg" {
     cidr_blocks      = ["0.0.0.0/0"]
     ipv6_cidr_blocks = ["::0/0"]
   }
-}
-
-resource "aws_ec2_instance_connect_endpoint" "default" {
-  subnet_id          = module.vpc.private_subnets[0]
-  security_group_ids = [aws_security_group.allow_ssh.id]
 }
 
 resource "aws_instance" "remote" {
@@ -108,12 +85,48 @@ resource "aws_route" "vpc_transit_gw" {
   transit_gateway_id     = aws_ec2_transit_gateway.default.id
 }
 
+// ==============SIMULATED ON-PREMISE NETWORK=====================
+
+module "local_vpc" {
+  source  = "terraform-aws-modules/vpc/aws"
+  version = "5.5.1"
+
+  azs                     = ["us-east-1b"]
+  cidr                    = "10.1.0.0/16"
+  public_subnets          = ["10.1.0.0/20"]
+  map_public_ip_on_launch = true
+}
+
+resource "aws_security_group" "local_allow_ssh" {
+  vpc_id = module.local_vpc.vpc_id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    protocol         = "-1"
+    from_port        = 0
+    to_port          = 0
+    cidr_blocks      = ["0.0.0.0/0"]
+    ipv6_cidr_blocks = ["::0/0"]
+  }
+}
+
 # Simulate the customer gateway side using a public EC2 instance.
 resource "aws_instance" "local" {
   ami           = "ami-0230bd60aa48260c6" #Amazon Linux 2023
   instance_type = "t2.micro"
+  subnet_id     = module.local_vpc.public_subnets[0]
   tags = {
     Name = "LocalInstance"
   }
-  security_groups = [aws_security_group.allow_ssh.id]
+  security_groups = [aws_security_group.local_allow_ssh.id]
+}
+
+resource "aws_eip" "local" {
+  domain = "vpc"
 }
