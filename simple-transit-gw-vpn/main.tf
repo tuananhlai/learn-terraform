@@ -229,7 +229,7 @@ resource "aws_cloudformation_stack" "strong_swan_vpn_gateway" {
     pTunnel2BgpNeighborIpAddress = local.tunnel2_neighbor_ip_address
     pUseElasticIp                = "true"
     pEipAllocationId             = aws_eip.local.allocation_id
-    pLocalBgpAsn                 = aws_vpn_connection.default.tunnel1_bgp_asn
+    pLocalBgpAsn                 = aws_customer_gateway.default.bgp_asn
     pVpcId                       = module.local_vpc.vpc_id
     pVpcCidr                     = module.local_vpc.vpc_cidr_block
     pSubnetId                    = module.local_vpc.public_subnets[0]
@@ -253,7 +253,7 @@ output "stack_parameters" {
     pTunnel2BgpNeighborIpAddress = local.tunnel2_neighbor_ip_address
     pUseElasticIp                = "true"
     pEipAllocationId             = aws_eip.local.allocation_id
-    pLocalBgpAsn                 = aws_vpn_connection.default.tunnel1_bgp_asn
+    pLocalBgpAsn                 = aws_customer_gateway.default.bgp_asn
     pVpcId                       = module.local_vpc.vpc_id
     pVpcCidr                     = module.local_vpc.vpc_cidr_block
     pSubnetId                    = module.local_vpc.public_subnets[0]
