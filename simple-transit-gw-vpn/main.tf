@@ -78,21 +78,6 @@ EOF
   user_data_replace_on_change = true
 }
 
-resource "aws_ec2_transit_gateway" "default" {
-
-}
-
-# resource "aws_ec2_transit_gateway_vpc_attachment" "default" {
-#   transit_gateway_id = aws_ec2_transit_gateway.default.id
-#   vpc_id             = module.vpc.vpc_id
-#   subnet_ids         = [module.vpc.private_subnets[0]]
-# }
-
-resource "aws_route" "vpc_transit_gw" {
-  route_table_id         = module.vpc.private_route_table_ids[0]
-  destination_cidr_block = local.local_vpc_cidr
-  transit_gateway_id     = aws_ec2_transit_gateway.default.id
-}
 
 // ==============SIMULATED ON-PREMISE NETWORK=====================
 
@@ -138,4 +123,34 @@ resource "aws_instance" "local" {
 
 resource "aws_eip" "local" {
   domain = "vpc"
+}
+
+// ===================SETUP VPN=====================
+
+resource "aws_ec2_transit_gateway" "default" {
+
+}
+
+resource "aws_ec2_transit_gateway_vpc_attachment" "default" {
+  transit_gateway_id = aws_ec2_transit_gateway.default.id
+  vpc_id             = module.vpc.vpc_id
+  subnet_ids         = [module.vpc.private_subnets[0]]
+}
+
+resource "aws_route" "vpc_transit_gw" {
+  route_table_id         = module.vpc.private_route_table_ids[0]
+  destination_cidr_block = local.local_vpc_cidr
+  transit_gateway_id     = aws_ec2_transit_gateway.default.id
+}
+
+resource "aws_customer_gateway" "default" {
+  bgp_asn    = 65000
+  ip_address = aws_eip.local.public_ip
+  type       = "ipsec.1"
+}
+
+resource "aws_vpn_connection" "default" {
+  customer_gateway_id = aws_customer_gateway.default.id
+  transit_gateway_id  = aws_ec2_transit_gateway.default.id
+  type                = aws_customer_gateway.default.type
 }
