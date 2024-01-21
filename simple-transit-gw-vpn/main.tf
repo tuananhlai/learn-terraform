@@ -2,13 +2,18 @@ provider "aws" {
   region = "us-east-1"
 }
 
+locals {
+  aws_vpc_cidr   = "10.0.0.0/16"
+  local_vpc_cidr = "10.1.0.0/16"
+}
+
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "5.5.1"
 
   azs             = ["us-east-1a"]
-  cidr            = "10.0.0.0/16"
-  private_subnets = ["10.0.0.0/20"]
+  cidr            = local.aws_vpc_cidr
+  private_subnets = [cidrsubnet(local.aws_vpc_cidr, 4, 0)]
 }
 
 resource "aws_security_group" "instance_sg" {
@@ -44,6 +49,10 @@ resource "aws_security_group" "instance_sg" {
   }
 }
 
+resource "aws_ec2_instance_connect_endpoint" "remote" {
+  subnet_id = module.vpc.private_subnets[0]
+}
+
 resource "aws_instance" "remote" {
   ami           = "ami-0230bd60aa48260c6" #Amazon Linux 2023
   instance_type = "t2.micro"
@@ -73,15 +82,15 @@ resource "aws_ec2_transit_gateway" "default" {
 
 }
 
-resource "aws_ec2_transit_gateway_vpc_attachment" "default" {
-  transit_gateway_id = aws_ec2_transit_gateway.default.id
-  vpc_id             = module.vpc.vpc_id
-  subnet_ids         = [module.vpc.private_subnets[0]]
-}
+# resource "aws_ec2_transit_gateway_vpc_attachment" "default" {
+#   transit_gateway_id = aws_ec2_transit_gateway.default.id
+#   vpc_id             = module.vpc.vpc_id
+#   subnet_ids         = [module.vpc.private_subnets[0]]
+# }
 
 resource "aws_route" "vpc_transit_gw" {
   route_table_id         = module.vpc.private_route_table_ids[0]
-  destination_cidr_block = "0.0.0.0/0"
+  destination_cidr_block = local.local_vpc_cidr
   transit_gateway_id     = aws_ec2_transit_gateway.default.id
 }
 
@@ -92,8 +101,8 @@ module "local_vpc" {
   version = "5.5.1"
 
   azs                     = ["us-east-1b"]
-  cidr                    = "10.1.0.0/16"
-  public_subnets          = ["10.1.0.0/20"]
+  cidr                    = local.local_vpc_cidr
+  public_subnets          = [cidrsubnet(local.local_vpc_cidr, 4, 0)]
   map_public_ip_on_launch = true
 }
 
