@@ -17,7 +17,8 @@ module "vpc" {
 }
 
 resource "aws_security_group" "instance_sg" {
-  vpc_id = module.vpc.vpc_id
+  name_prefix = "RemoteInstanceSg"
+  vpc_id      = module.vpc.vpc_id
 
   ingress {
     from_port   = 22
@@ -60,7 +61,7 @@ resource "aws_instance" "remote" {
   tags = {
     Name = "RemoteInstance"
   }
-  security_groups             = [aws_security_group.instance_sg.id]
+  vpc_security_group_ids      = [aws_security_group.instance_sg.id]
   user_data                   = <<EOF
 #!/bin/bash
 dnf -y install wget cowsay nginx
@@ -92,7 +93,8 @@ module "local_vpc" {
 }
 
 resource "aws_security_group" "local_allow_ssh" {
-  vpc_id = module.local_vpc.vpc_id
+  name_prefix = "LocalInstanceSg"
+  vpc_id      = module.local_vpc.vpc_id
 
   ingress {
     from_port   = 22
@@ -118,7 +120,7 @@ resource "aws_instance" "local" {
   tags = {
     Name = "LocalInstance"
   }
-  security_groups = [aws_security_group.local_allow_ssh.id]
+  vpc_security_group_ids = [aws_security_group.local_allow_ssh.id]
 }
 
 resource "aws_eip" "local" {
@@ -127,27 +129,27 @@ resource "aws_eip" "local" {
 
 // ===================SETUP VPN=====================
 
-# resource "aws_ec2_transit_gateway" "default" {
+resource "aws_ec2_transit_gateway" "default" {
 
-# }
+}
 
-# resource "aws_ec2_transit_gateway_vpc_attachment" "default" {
-#   transit_gateway_id = aws_ec2_transit_gateway.default.id
-#   vpc_id             = module.vpc.vpc_id
-#   subnet_ids         = [module.vpc.private_subnets[0]]
-# }
+resource "aws_ec2_transit_gateway_vpc_attachment" "default" {
+  transit_gateway_id = aws_ec2_transit_gateway.default.id
+  vpc_id             = module.vpc.vpc_id
+  subnet_ids         = [module.vpc.private_subnets[0]]
+}
 
-# resource "aws_route" "vpc_transit_gw" {
-#   route_table_id         = module.vpc.private_route_table_ids[0]
-#   destination_cidr_block = local.local_vpc_cidr
-#   transit_gateway_id     = aws_ec2_transit_gateway.default.id
-# }
+resource "aws_route" "vpc_transit_gw" {
+  route_table_id         = module.vpc.private_route_table_ids[0]
+  destination_cidr_block = local.local_vpc_cidr
+  transit_gateway_id     = aws_ec2_transit_gateway.default.id
+}
 
-# resource "aws_customer_gateway" "default" {
-#   bgp_asn    = 65000
-#   ip_address = aws_eip.local.public_ip
-#   type       = "ipsec.1"
-# }
+resource "aws_customer_gateway" "default" {
+  bgp_asn    = 65000
+  ip_address = aws_eip.local.public_ip
+  type       = "ipsec.1"
+}
 
 # resource "aws_vpn_connection" "default" {
 #   customer_gateway_id = aws_customer_gateway.default.id
