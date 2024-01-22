@@ -313,7 +313,7 @@ resource "aws_wafv2_web_acl" "default" {
     visibility_config {
       sampled_requests_enabled   = false
       cloudwatch_metrics_enabled = false
-      metric_name                = "AllowJpMetric"
+      metric_name                = "NoWpFilesMetric"
     }
   }
 }
