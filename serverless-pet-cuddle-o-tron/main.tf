@@ -2,14 +2,17 @@ provider "aws" {
   region = "us-east-1"
 }
 
-resource "aws_sesv2_email_identity" "sender" {
-  email_identity = "lai.tuananh+cuddleotron@moneyforward.co.jp"
+// Stage 1 - Configure SES.
+
+data "aws_sesv2_email_identity" "sender" {
+  email_identity = var.sender_email_identity
 }
 
-resource "aws_sesv2_email_identity" "receiver" {
-  email_identity = "lai.tuananh+cuddlecustomer@moneyforward.co.jp"
+data "aws_sesv2_email_identity" "receiver" {
+  email_identity = var.receiver_email_identity
 }
 
+// Stage 2 - Configure email_reminder lambda function.
 resource "aws_iam_role" "lambda_execution_role" {
   name_prefix = "lambda_execution_role"
 
@@ -63,12 +66,10 @@ resource "aws_iam_role_policy" "snsandsespermissions" {
   })
 }
 
-// =======CREATE LAMBDA FUNCTION=========
-
 data "archive_file" "lambda_function" {
   type        = "zip"
-  source_file = "${path.module}/lambda_function.py"
-  output_path = "${path.module}/lambda_function.zip"
+  source_file = "${path.module}/email_reminder.py"
+  output_path = "${path.module}/tmp/email_reminder.zip"
 }
 
 resource "aws_lambda_function" "default" {
@@ -82,10 +83,12 @@ resource "aws_lambda_function" "default" {
 
   environment {
     variables = {
-      "FROM_EMAIL_ADDRESS" = aws_sesv2_email_identity.sender.email_identity
+      "FROM_EMAIL_ADDRESS" = data.aws_sesv2_email_identity.sender.email_identity
     }
   }
 }
+
+// Stage 3 - Implement and Configure State Machine.
 
 resource "aws_iam_role" "states" {
   name_prefix        = "states_execution_role"
@@ -192,12 +195,12 @@ resource "aws_sfn_state_machine" "default" {
   }
 }
 
-// Stage 4 - API Gateway and Application Lambda
+// Stage 4 - API Gateway and Application Lambda.
 
 data "archive_file" "api_lambda" {
   type        = "zip"
   source_file = "${path.module}/api_lambda.py"
-  output_path = "${path.module}/api_lambda.zip"
+  output_path = "${path.module}/tmp/api_lambda.zip"
 }
 
 resource "aws_lambda_function" "api" {
@@ -228,6 +231,8 @@ resource "aws_api_gateway_resource" "petcuddleotron" {
   parent_id   = aws_api_gateway_rest_api.petcuddleotron.root_resource_id
   path_part   = "petcuddleotron"
 }
+
+// Create an OPTIONS method to allow CORS.
 
 resource "aws_api_gateway_method" "petcuddleotron_options" {
   rest_api_id   = aws_api_gateway_rest_api.petcuddleotron.id
@@ -303,7 +308,7 @@ resource "aws_api_gateway_deployment" "default" {
   stage_name  = "prod"
 }
 
-// Stage 5
+// Stage 5 - Serverless Application Frontend.
 
 resource "aws_s3_bucket" "petcuddleotron" {
   bucket_prefix = "pet-cuddle-o-tron-"
@@ -373,4 +378,10 @@ resource "aws_s3_object" "serverlessjs" {
   content = templatefile("${path.module}/frontend/serverless.js.tftpl", {
     api_endpoint = "${aws_api_gateway_deployment.default.invoke_url}/${aws_api_gateway_resource.petcuddleotron.path_part}"
   })
+}
+
+output "values" {
+  value = {
+    send_email_website_url = aws_s3_bucket_website_configuration.petcuddleotron.website_endpoint
+  }
 }
