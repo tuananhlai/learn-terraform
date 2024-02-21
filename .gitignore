@@ -35,3 +35,5 @@ terraform.rc
 
 # Lambda function zip file
 simple-lambda/*.zip
+
+tmp/
