@@ -6,10 +6,24 @@ provider "aws" {
 
 data "aws_sesv2_email_identity" "sender" {
   email_identity = var.sender_email_identity
+
+  lifecycle {
+    postcondition {
+      condition     = self.verified_for_sending_status == true
+      error_message = "sender email identity must be verified."
+    }
+  }
 }
 
 data "aws_sesv2_email_identity" "receiver" {
   email_identity = var.receiver_email_identity
+
+  lifecycle {
+    postcondition {
+      condition     = self.verified_for_sending_status == true
+      error_message = "receiver email identity must be verified."
+    }
+  }
 }
 
 // Stage 2 - Configure email_reminder lambda function.
