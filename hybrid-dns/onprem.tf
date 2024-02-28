@@ -129,6 +129,7 @@ resource "aws_instance" "onprem_dns_b" {
         file "corp.animals4life.org.zone";
         allow-update { none; };
     };
+    ${local.aws_zone_config}
     EOL
     cat <<EOL > /var/named/corp.animals4life.org.zone
     \$TTL 86400
@@ -171,7 +172,7 @@ resource "aws_instance" "onprem_dns_a" {
     Name = "OnPremDNS-A"
   }
 
-  user_data = <<-EOF
+  user_data                   = <<-EOF
     #!/bin/bash -xe
     yum update -y
     yum install bind bind-utils -y
@@ -200,6 +201,7 @@ resource "aws_instance" "onprem_dns_a" {
         file "corp.animals4life.org.zone";
         allow-update { none; };
     };
+    ${local.aws_zone_config}
     EOS
     cat <<EOS > /var/named/corp.animals4life.org.zone
     \$TTL 86400
@@ -224,4 +226,5 @@ resource "aws_instance" "onprem_dns_a" {
     service named restart
     chkconfig named on
   EOF
+  user_data_replace_on_change = true
 }
