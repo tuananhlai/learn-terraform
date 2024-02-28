@@ -543,9 +543,9 @@ resource "aws_route" "aws_onprem" {
 
 output "onprem_commands" {
   value = {
-    check_onprem_dns       = "dig @${aws_instance.onprem_dns_b} corp.animals4life.org +short"
+    check_onprem_dns       = "dig @${aws_instance.onprem_dns_b.private_ip} corp.animals4life.org +short"
     check_aws_connectivity = "ping ${aws_instance.apps[0].private_ip}"
-    check_aws_dns          = "dig @${aws_instance.onprem_dns_b} web.aws.animals4life.org +short"
+    check_aws_dns          = "dig @${aws_instance.onprem_dns_b.private_ip} web.aws.animals4life.org +short"
   }
   description = "Commands to be run on OnPremApp instance to verify the functionality."
 }
