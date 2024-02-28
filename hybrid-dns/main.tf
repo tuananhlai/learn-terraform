@@ -540,3 +540,21 @@ resource "aws_route" "aws_onprem" {
   destination_cidr_block    = module.onprem_vpc.vpc_cidr_block
   vpc_peering_connection_id = aws_vpc_peering_connection.onprem_aws.id
 }
+
+output "onprem_commands" {
+  value = {
+    check_onprem_dns       = "dig @${aws_instance.onprem_dns_b} corp.animals4life.org +short"
+    check_aws_connectivity = "ping ${aws_instance.apps[0].private_ip}"
+    check_aws_dns          = "dig @${aws_instance.onprem_dns_b} web.aws.animals4life.org +short"
+  }
+  description = "Commands to be run on OnPremApp instance to verify the functionality."
+}
+
+output "aws_commands" {
+  value = {
+    check_local_dns           = "dig corp.animals4life.org +short"
+    check_onprem_connectivity = "ping ${aws_instance.onprem_app.private_ip}"
+    check_aws_dns             = "dig web.aws.animals4life.org +short"
+  }
+  description = "Commands to be run on AwsApp instance to verify the functionality."
+}
