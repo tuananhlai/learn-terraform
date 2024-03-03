@@ -166,5 +166,5 @@ output "commands" {
     "get_s3_object"                   = "aws s3 cp s3://${aws_s3_bucket.default.bucket}/hello.txt -"
     "get_s3_object_via_access_point"  = "aws s3 cp s3://${aws_s3_access_point.default.arn}/hello.txt -"
   }
-  description = "Commands to run to verify the functionality of the S3 bucket and access point."
+  description = "Commands to run on the EC2 instance to verify the functionality of the S3 bucket and access point."
 }
