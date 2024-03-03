@@ -53,7 +53,7 @@ resource "aws_s3_bucket_policy" "app" {
 }
 
 resource "aws_iam_policy" "patchesprivate" {
-  name_prefix = "PrivatePatchesPermissions"
+  name_prefix = "cwi-patchesprivate-bucket-readonly-"
   path        = "/"
   policy = jsonencode({
     Version = "2012-10-17",
@@ -143,11 +143,13 @@ data "aws_iam_policy_document" "cognito_identity_assume_role" {
   }
 }
 
+// The role to be assigned to authenticated users.
 resource "aws_iam_role" "cognito_authenticated" {
   name               = "cwi-cognito-authenticated"
   assume_role_policy = data.aws_iam_policy_document.cognito_identity_assume_role.json
 }
 
+// Allow authenticated users to access the private image bucket.
 resource "aws_iam_role_policy_attachment" "cognito_authenticated_patchesprivate" {
   role       = aws_iam_role.cognito_authenticated.id
   policy_arn = aws_iam_policy.patchesprivate.arn
