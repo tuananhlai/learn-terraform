@@ -190,3 +190,7 @@ resource "aws_s3_object" "patchesprivate" {
   bucket       = aws_s3_bucket.patchesprivate.bucket
   content_type = "image/jpeg"
 }
+
+output "application_url" {
+  value = aws_cloudfront_distribution.app.domain_name
+}
