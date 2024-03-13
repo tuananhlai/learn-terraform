@@ -318,6 +318,7 @@ resource "aws_lambda_permission" "email_reminder" {
 }
 
 resource "aws_api_gateway_deployment" "default" {
+  depends_on  = [aws_api_gateway_integration.options_integration, aws_api_gateway_integration.petcuddleotron_post]
   rest_api_id = aws_api_gateway_rest_api.petcuddleotron.id
   stage_name  = "prod"
 }
