@@ -2,41 +2,56 @@ provider "aws" {
   region = "us-east-1"
 }
 
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+locals {
+  cidr = "10.0.0.0/16"
+}
+
 module "vpc" {
   source = "terraform-aws-modules/vpc/aws"
 
   name                    = "SimpleNlbVpc"
-  cidr                    = "10.0.0.0/16"
-  azs                     = ["us-east-1a", "us-east-1b"]
-  public_subnets          = ["10.0.16.0/20", "10.0.32.0/20"]
+  cidr                    = local.cidr
+  azs                     = slice(data.aws_availability_zones.available.names, 0, 2) 
+  public_subnets          = cidrsubnets(local.cidr, 4, 4)
   map_public_ip_on_launch = true
 }
 
-resource "aws_security_group" "instance_sg" {
-  vpc_id      = module.vpc.vpc_id
-  name_prefix = "instance-sg-"
+module "instance_sg" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "5.1.0"
 
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  vpc_id          = module.vpc.vpc_id
+  name            = "instance-sg-"
+  use_name_prefix = true
 
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  ingress_with_cidr_blocks = [
+    {
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      cidr_blocks = "0.0.0.0/0"
+    },
+    {
+      from_port   = 80 
+      to_port     = 80 
+      protocol    = "tcp"
+      cidr_blocks = "0.0.0.0/0"
+    },
+  ]
 
-  egress {
-    from_port        = 0
-    to_port          = 0
-    protocol         = "-1"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::0/0"]
-  }
+  egress_with_cidr_blocks = [
+    {
+      protocol         = "-1"
+      from_port        = 0
+      to_port          = 0
+      cidr_blocks      = "0.0.0.0/0"
+      ipv6_cidr_blocks = "::0/0"
+    }
+  ]
 }
 
 resource "aws_instance" "instances" {
@@ -54,7 +69,7 @@ resource "aws_instance" "instances" {
   }
   ami                         = "ami-0230bd60aa48260c6" #Amazon Linux 2023
   instance_type               = "t2.micro"
-  vpc_security_group_ids      = [aws_security_group.instance_sg.id]
+  vpc_security_group_ids      = [module.instance_sg.security_group_id]
   subnet_id                   = each.value.subnet_id
   user_data                   = <<EOF
 #!/bin/bash
@@ -73,24 +88,32 @@ EOF
   user_data_replace_on_change = true
 }
 
-resource "aws_security_group" "lb_sg" {
-  vpc_id      = module.vpc.vpc_id
-  name_prefix = "lb-sg-"
+module "lb_sg" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "5.1.0"
 
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  vpc_id          = module.vpc.vpc_id
+  name            = "lb-sg-"
+  use_name_prefix = true
 
-  egress {
-    from_port        = 0
-    to_port          = 0
-    protocol         = "-1"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::0/0"]
-  }
+  ingress_with_cidr_blocks = [
+    {
+      from_port   = 80 
+      to_port     = 80 
+      protocol    = "tcp"
+      cidr_blocks = "0.0.0.0/0"
+    },
+  ]
+
+  egress_with_cidr_blocks = [
+    {
+      protocol         = "-1"
+      from_port        = 0
+      to_port          = 0
+      cidr_blocks      = "0.0.0.0/0"
+      ipv6_cidr_blocks = "::0/0"
+    }
+  ]
 }
 
 resource "aws_lb_target_group" "default" {
@@ -108,7 +131,7 @@ resource "aws_lb_target_group_attachment" "attachments" {
 
 resource "aws_lb" "default" {
   subnets            = module.vpc.public_subnets
-  security_groups    = [aws_security_group.lb_sg.id]
+  security_groups    = [module.lb_sg.security_group_id]
   load_balancer_type = "network"
   internal           = false
 }
