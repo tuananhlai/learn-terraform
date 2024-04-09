@@ -39,6 +39,16 @@ data "aws_cloudfront_cache_policy" "caching_optimized" {
   name = "Managed-CachingOptimized"
 }
 
+resource "aws_cloudfront_public_key" "default" {
+  name        = "scf-public-key"
+  encoded_key = file("keys/public_key.pem")
+}
+
+resource "aws_cloudfront_key_group" "default" {
+  name  = "scf-key-group"
+  items = [aws_cloudfront_public_key.default.id]
+}
+
 resource "aws_cloudfront_distribution" "default" {
   enabled = true
 
@@ -75,7 +85,7 @@ resource "aws_cloudfront_distribution" "default" {
     target_origin_id       = local.s3_origin_id
     viewer_protocol_policy = "allow-all"
     cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
-    trusted_signers        = ["self"]
+    trusted_key_groups     = [aws_cloudfront_key_group.default.id]
   }
 }
 
@@ -100,4 +110,11 @@ resource "aws_s3_bucket_policy" "default" {
     }
   } 
   EOF
+}
+
+output "values" {
+  value = {
+    cloudfront_domain_name = aws_cloudfront_distribution.default.domain_name
+    key_pair_id            = aws_cloudfront_public_key.default.id
+  }
 }

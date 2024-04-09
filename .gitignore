@@ -37,3 +37,4 @@ terraform.rc
 simple-lambda/*.zip
 
 tmp/
+venv/
