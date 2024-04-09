@@ -9,7 +9,16 @@ resource "aws_s3_bucket" "default" {
 resource "aws_s3_object" "images" {
   for_each = fileset(path.module, "images/*.png")
 
-  key          = split("/", each.key)[1]
+  key          = "public/${split("/", each.key)[1]}"
+  source       = each.key
+  bucket       = aws_s3_bucket.default.bucket
+  content_type = "image/png"
+}
+
+resource "aws_s3_object" "private_images" {
+  for_each = fileset(path.module, "private-images/*.png")
+
+  key          = "private/${split("/", each.key)[1]}"
   source       = each.key
   bucket       = aws_s3_bucket.default.bucket
   content_type = "image/png"
@@ -56,6 +65,17 @@ resource "aws_cloudfront_distribution" "default" {
     domain_name              = aws_s3_bucket.default.bucket_regional_domain_name
     origin_access_control_id = aws_cloudfront_origin_access_control.default.id
     origin_id                = local.s3_origin_id
+  }
+
+  # Require signed URLs or cookies for private content.
+  ordered_cache_behavior {
+    path_pattern           = "/private/*"
+    allowed_methods        = ["GET", "HEAD"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = local.s3_origin_id
+    viewer_protocol_policy = "allow-all"
+    cache_policy_id        = data.aws_cloudfront_cache_policy.caching_optimized.id
+    trusted_signers        = ["self"]
   }
 }
 
