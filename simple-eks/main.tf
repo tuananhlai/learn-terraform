@@ -15,7 +15,7 @@ data "aws_iam_policy_document" "assume_role_policy" {
 }
 
 resource "aws_iam_role" "default" {
-  name_prefix        = "simple-eks-"
+  name_prefix        = "simple-eks-cluster-role-"
   assume_role_policy = data.aws_iam_policy_document.assume_role_policy.json
 }
 
@@ -25,7 +25,8 @@ resource "aws_iam_role_policy_attachment" "cluster_policy" {
 }
 
 locals {
-  cidr = "10.16.0.0/16"
+  cidr    = "10.16.0.0/16"
+  subnets = cidrsubnets(local.cidr, 4, 4, 4, 4)
 }
 
 data "aws_availability_zones" "available" {
@@ -40,16 +41,49 @@ module "aws_vpc" {
   cidr = local.cidr
 
   azs             = slice(data.aws_availability_zones.available.names, 0, 2)
-  private_subnets = cidrsubnets(local.cidr, 4, 4)
+  private_subnets = slice(local.subnets, 0, 2)
+  public_subnets  = slice(local.subnets, 2, 4)
 }
 
-resource "aws_eks_cluster" "default" {
-  name = "simple-eks-cluster"
+data "aws_iam_policy_document" "node_assume_role_policy" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
 
-  vpc_config {
-    subnet_ids = module.aws_vpc.private_subnets
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
   }
-
-  role_arn   = aws_iam_role.default.arn
-  depends_on = [aws_iam_role_policy_attachment.cluster_policy]
 }
+
+resource "aws_iam_role" "node" {
+  name_prefix        = "simple-eks-node-role-"
+  assume_role_policy = data.aws_iam_policy_document.node_assume_role_policy.json
+}
+
+resource "aws_iam_role_policy_attachment" "node_worker_policy" {
+  role       = aws_iam_role.node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+}
+
+resource "aws_iam_role_policy_attachment" "node_cni_policy" {
+  role       = aws_iam_role.node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+}
+
+resource "aws_iam_role_policy_attachment" "node_ecr_policy" {
+  role       = aws_iam_role.node.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+# resource "aws_eks_cluster" "default" {
+#   name = "simple-eks-cluster"
+
+#   vpc_config {
+#     subnet_ids = module.aws_vpc.public_subnets
+#   }
+
+#   role_arn   = aws_iam_role.default.arn
+#   depends_on = [aws_iam_role_policy_attachment.cluster_policy]
+# }
