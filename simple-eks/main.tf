@@ -77,13 +77,41 @@ resource "aws_iam_role_policy_attachment" "node_ecr_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
-# resource "aws_eks_cluster" "default" {
-#   name = "simple-eks-cluster"
+resource "aws_eks_cluster" "default" {
+  name = "simple-eks-cluster"
 
-#   vpc_config {
-#     subnet_ids = module.aws_vpc.public_subnets
+  vpc_config {
+    subnet_ids = module.aws_vpc.public_subnets
+  }
+
+  role_arn   = aws_iam_role.default.arn
+  depends_on = [aws_iam_role_policy_attachment.cluster_policy]
+}
+
+# resource "aws_eks_node_group" "default" {
+#   cluster_name           = aws_eks_cluster.default.name
+#   node_group_name_prefix = "simple-eks-node-group-"
+#   node_role_arn          = aws_iam_role.node.arn
+#   instance_types         = ["t2.micro", "t3.micro"]
+#   subnet_ids             = module.aws_vpc.private_subnets
+
+#   scaling_config {
+#     desired_size = 1
+#     max_size     = 2
+#     min_size     = 1
 #   }
 
-#   role_arn   = aws_iam_role.default.arn
-#   depends_on = [aws_iam_role_policy_attachment.cluster_policy]
+#   update_config {
+#     max_unavailable = 1
+#   }
+
+#   depends_on = [
+#     aws_iam_role_policy_attachment.node_cni_policy,
+#     aws_iam_role_policy_attachment.node_ecr_policy,
+#     aws_iam_role_policy_attachment.node_worker_policy
+#   ]
 # }
+
+output "cluster_name" {
+  value = aws_eks_cluster.default.name
+}
