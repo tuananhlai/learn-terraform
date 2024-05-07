@@ -61,6 +61,12 @@ resource "aws_iam_role_policy" "default" {
 
 output "commands" {
   value = {
+    # After running assume-role command, you will be given temporary credentials including
+    # access key, secret key, and session token. Export them as environment variables
+    # to finish assuming the role.
+    # - AWS_ACCESS_KEY_ID
+    # - AWS_SECRET_ACCESS_KEY
+    # - AWS_SESSION_TOKEN
     assume_role = "aws sts assume-role --role-arn ${aws_iam_role.default.arn} --role-session-name testuser --external-id ${var.external_id}"
     ls_objects  = "aws s3 ls ${aws_s3_bucket.default.bucket}"
   }
