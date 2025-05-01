@@ -2,6 +2,9 @@ provider "aws" {
   region = "us-east-1"
 }
 
+// You need to enable SSO in the AWS account before applying this Terraform file.
+// https://us-east-1.console.aws.amazon.com/singlesignon/home?region=us-east-1
+
 data "aws_caller_identity" "default" {
 
 }
