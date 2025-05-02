@@ -85,6 +85,7 @@ resource "aws_db_instance" "primary" {
   skip_final_snapshot    = true
   vpc_security_group_ids = [module.db_sg.security_group_id]
   db_subnet_group_name   = aws_db_subnet_group.primary.name
+  parameter_group_name   = aws_db_parameter_group.primary.name
   // For demonstration purpose only. It's recommended to apply changes to the database
   // during its maintenance window.
   apply_immediately = true
