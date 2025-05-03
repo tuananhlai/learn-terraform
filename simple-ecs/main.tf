@@ -75,7 +75,7 @@ data "aws_ami" "amz_linux_2023" {
 resource "aws_launch_template" "ecs_lt" {
   name_prefix            = "simple-ecs-launch-template"
   image_id               = data.aws_ami.amz_linux_2023.id
-  instance_type          = "t3.micro"
+  instance_type          = "t2.micro"
   key_name               = "ec2ecsglog"
   vpc_security_group_ids = [module.instance_sg.security_group_id]
 
