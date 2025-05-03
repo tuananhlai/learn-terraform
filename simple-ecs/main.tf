@@ -135,6 +135,7 @@ echo ECS_CLUSTER=${aws_ecs_cluster.default.name} >> /etc/ecs/ecs.config
 }
 
 resource "aws_autoscaling_group" "ecs_asg" {
+  name_prefix         = "simple-ecs-asg"
   vpc_zone_identifier = module.vpc.public_subnets
   min_size            = 0
   max_size            = 2
@@ -151,14 +152,28 @@ resource "aws_autoscaling_group" "ecs_asg" {
   }
 }
 
-# resource "aws_lb" "ecs_alb" {
-#   name_prefix        = "simple-ecs-alb"
-#   internal           = false
-#   load_balancer_type = "application"
-#   security_groups    = [module.instance_sg.security_group_id]
-#   subnets            = module.vpc.public_subnets
+resource "aws_lb" "ecs" {
+  name_prefix        = "simple-ecs-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [module.instance_sg.security_group_id]
+  subnets            = module.vpc.public_subnets
+}
 
-#   tags = {
-#     Name = "ecs-alb"
-#   }
-# }
+resource "aws_lb_target_group" "ecs" {
+  name_prefix = "simple-ecs-target-group"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = module.vpc.vpc_id
+}
+
+resource "aws_lb_listener" "ecs" {
+  load_balancer_arn = aws_lb.ecs.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.ecs.arn
+  }
+}
