@@ -72,21 +72,50 @@ data "aws_ami" "amz_linux_2023" {
   }
 }
 
+resource "aws_iam_role" "ecs_ec2" {
+  name = "SimpleECSEC2Role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_ec2" {
+  role       = aws_iam_role.ecs_ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+}
+
+resource "aws_iam_instance_profile" "ecs_ec2" {
+  name_prefix = "SimpleECS"
+  role        = aws_iam_role.ecs_ec2.id
+}
+
+resource "aws_ecs_cluster" "default" {
+  name = "simple-ecs-cluster"
+}
+
 resource "aws_launch_template" "ecs_lt" {
   name_prefix            = "simple-ecs-launch-template"
   image_id               = data.aws_ami.amz_linux_2023.id
   instance_type          = "t2.micro"
-  key_name               = "ec2ecsglog"
   vpc_security_group_ids = [module.instance_sg.security_group_id]
 
   iam_instance_profile {
-    name = "ecsInstanceRole"
+    arn = aws_iam_instance_profile.ecs_ec2.arn
   }
 
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
-      volume_size = 30
+      volume_size = 10
       volume_type = "gp2"
     }
   }
@@ -100,7 +129,36 @@ resource "aws_launch_template" "ecs_lt" {
 
   user_data = base64encode(<<EOF
 #!/bin/bash
-echo ECS_CLUSTER=my-ecs-cluster >> /etc/ecs/ecs.config
+echo ECS_CLUSTER=${aws_ecs_cluster.default.name} >> /etc/ecs/ecs.config
     EOF
   )
 }
+
+resource "aws_autoscaling_group" "ecs_asg" {
+  vpc_zone_identifier = module.vpc.public_subnets
+  min_size            = 0
+  max_size            = 2
+
+  launch_template {
+    id      = aws_launch_template.ecs_lt.id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "AmazonECSManaged"
+    value               = true
+    propagate_at_launch = true
+  }
+}
+
+# resource "aws_lb" "ecs_alb" {
+#   name_prefix        = "simple-ecs-alb"
+#   internal           = false
+#   load_balancer_type = "application"
+#   security_groups    = [module.instance_sg.security_group_id]
+#   subnets            = module.vpc.public_subnets
+
+#   tags = {
+#     Name = "ecs-alb"
+#   }
+# }
