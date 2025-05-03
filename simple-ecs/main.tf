@@ -188,3 +188,31 @@ resource "aws_ecs_cluster_capacity_providers" "default" {
   cluster_name       = aws_ecs_cluster.default.name
   capacity_providers = [aws_ecs_capacity_provider.default.name]
 }
+
+resource "aws_ecs_task_definition" "ecs_task_definition" {
+  family       = "simple-ecs-task-definition"
+  network_mode = "awsvpc"
+  cpu          = 256
+
+  container_definitions = jsonencode([
+    {
+      name      = "dockergs"
+      image     = "public.ecr.aws/f9n5f1l7/dgs:latest"
+      cpu       = 256
+      memory    = 512
+      essential = true
+      portMappings = [
+        {
+          containerPort = 80
+          hostPort      = 80
+          protocol      = "tcp"
+        }
+      ]
+    }
+  ])
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
+}
