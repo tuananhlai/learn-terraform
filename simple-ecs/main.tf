@@ -138,6 +138,7 @@ resource "aws_autoscaling_group" "ecs_asg" {
   name_prefix         = "simple-ecs-asg"
   vpc_zone_identifier = module.vpc.public_subnets
   min_size            = 0
+  desired_capacity    = 1
   max_size            = 2
 
   launch_template {
