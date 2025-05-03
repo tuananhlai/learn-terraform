@@ -153,7 +153,6 @@ resource "aws_autoscaling_group" "ecs_asg" {
 }
 
 resource "aws_lb" "ecs" {
-  name_prefix        = "simple-ecs-alb"
   internal           = false
   load_balancer_type = "application"
   security_groups    = [module.instance_sg.security_group_id]
@@ -161,10 +160,9 @@ resource "aws_lb" "ecs" {
 }
 
 resource "aws_lb_target_group" "ecs" {
-  name_prefix = "simple-ecs-target-group"
-  port        = 80
-  protocol    = "HTTP"
-  vpc_id      = module.vpc.vpc_id
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = module.vpc.vpc_id
 }
 
 resource "aws_lb_listener" "ecs" {
@@ -176,4 +174,17 @@ resource "aws_lb_listener" "ecs" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.ecs.arn
   }
+}
+
+resource "aws_ecs_capacity_provider" "default" {
+  name = "simple-ecs-capacity-provider"
+
+  auto_scaling_group_provider {
+    auto_scaling_group_arn = aws_autoscaling_group.ecs_asg.arn
+  }
+}
+
+resource "aws_ecs_cluster_capacity_providers" "default" {
+  cluster_name       = aws_ecs_cluster.default.name
+  capacity_providers = [aws_ecs_capacity_provider.default.name]
 }
