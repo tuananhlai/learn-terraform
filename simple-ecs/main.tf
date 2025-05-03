@@ -160,9 +160,14 @@ resource "aws_lb" "ecs" {
 }
 
 resource "aws_lb_target_group" "ecs" {
-  port     = 80
-  protocol = "HTTP"
-  vpc_id   = module.vpc.vpc_id
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = module.vpc.vpc_id
+  target_type = "ip"
+
+  health_check {
+    path = "/"
+  }
 }
 
 resource "aws_lb_listener" "ecs" {
@@ -189,7 +194,7 @@ resource "aws_ecs_cluster_capacity_providers" "default" {
   capacity_providers = [aws_ecs_capacity_provider.default.name]
 }
 
-resource "aws_ecs_task_definition" "ecs_task_definition" {
+resource "aws_ecs_task_definition" "default" {
   family       = "simple-ecs-task-definition"
   network_mode = "awsvpc"
   cpu          = 256
@@ -214,5 +219,37 @@ resource "aws_ecs_task_definition" "ecs_task_definition" {
   runtime_platform {
     operating_system_family = "LINUX"
     cpu_architecture        = "X86_64"
+  }
+}
+
+resource "aws_ecs_service" "ecs_service" {
+  name            = "simple-ecs-service"
+  cluster         = aws_ecs_cluster.default.id
+  task_definition = aws_ecs_task_definition.default.arn
+  desired_count   = 2
+
+  network_configuration {
+    subnets         = module.vpc.public_subnets
+    security_groups = [module.instance_sg.security_group_id]
+  }
+
+  force_new_deployment = true
+  placement_constraints {
+    type = "distinctInstance"
+  }
+
+  triggers = {
+    redeployment = timestamp()
+  }
+
+  capacity_provider_strategy {
+    capacity_provider = aws_ecs_capacity_provider.default.name
+    weight            = 100
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.ecs.arn
+    container_name   = "dockergs"
+    container_port   = 80
   }
 }
