@@ -14,13 +14,12 @@ module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 5.0"
 
-  name                    = "simple-ecs-vpc"
-  cidr                    = local.default_vpc_cidr
-  azs                     = slice(data.aws_availability_zones.available.names, 0, 2)
-  public_subnets          = cidrsubnets(local.default_vpc_cidr, 4, 4)
-  enable_dns_hostnames    = true
-  enable_dns_support      = true
-  map_public_ip_on_launch = true
+  name                 = "simple-ecs-vpc"
+  cidr                 = local.default_vpc_cidr
+  azs                  = slice(data.aws_availability_zones.available.names, 0, 2)
+  public_subnets       = cidrsubnets(local.default_vpc_cidr, 4, 4)
+  enable_dns_hostnames = true
+  enable_dns_support   = true
 }
 
 module "instance_sg" {
@@ -56,13 +55,16 @@ data "aws_ami" "amz_linux_2023" {
   most_recent = true
   owners      = ["amazon"]
   filter {
-    name   = "name"
+    name = "name"
+    // Note that we must use an AMI optimized for ECS instead of
+    // a general purpose AMI like the ones you see when launching a new EC2 instance.
     values = ["al2023-ami-ecs-hvm-*-kernel-6.1-x86_64"]
   }
 }
 
+// https://docs.aws.amazon.com/AmazonECS/latest/developerguide/instance_IAM_role.html
 resource "aws_iam_role" "ecs_ec2" {
-  name = "SimpleECSEC2Role"
+  name = "simple-ecs-ec2-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -83,7 +85,7 @@ resource "aws_iam_role_policy_attachment" "ecs_ec2" {
 }
 
 resource "aws_iam_instance_profile" "ecs_ec2" {
-  name_prefix = "SimpleECS"
+  name_prefix = "simple-ecs-instance-profile"
   role        = aws_iam_role.ecs_ec2.id
 }
 
@@ -104,6 +106,7 @@ resource "aws_launch_template" "ecs_lt" {
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
+      // Volumn size needs to be at least 30GB in order to use this AMI.
       volume_size = 30
       volume_type = "gp2"
     }
@@ -116,6 +119,7 @@ resource "aws_launch_template" "ecs_lt" {
     }
   }
 
+  // https://docs.aws.amazon.com/AmazonECS/latest/developerguide/launch_container_instance.html#linux-liw-advanced-details
   user_data = base64encode(<<EOF
 #!/bin/bash
 echo ECS_CLUSTER=${aws_ecs_cluster.default.name} >> /etc/ecs/ecs.config
@@ -150,9 +154,11 @@ resource "aws_lb" "ecs" {
 }
 
 resource "aws_lb_target_group" "ecs" {
-  port        = 80
-  protocol    = "HTTP"
-  vpc_id      = module.vpc.vpc_id
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = module.vpc.vpc_id
+  // (not sure why yet) if `target_type` is removed, there will be an error.
+  // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lb_target_group#target_type-1
   target_type = "ip"
 
   health_check {
@@ -190,6 +196,7 @@ resource "aws_ecs_cluster_capacity_providers" "default" {
   }
 }
 
+// https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task_execution_IAM_role.html
 resource "aws_iam_role" "ecs_execution" {
   name_prefix = "simple-ecs-execution-role"
   assume_role_policy = jsonencode({
@@ -219,8 +226,11 @@ resource "aws_ecs_task_definition" "default" {
 
   container_definitions = jsonencode([
     {
-      name      = "nginx"
-      image     = "nginx:latest"
+      name  = "nginx"
+      image = "nginx:latest"
+      // memory and cpu might be reduced for a better demo experience.
+      // Because `t2.micro` instance only have ~1GB of RAM, setting
+      // the memory as 512MB would make it difficult to deploy new tasks.
       cpu       = 256
       memory    = 512
       essential = true
@@ -251,6 +261,7 @@ resource "aws_ecs_service" "default" {
     security_groups = [module.instance_sg.security_group_id]
   }
 
+  // the next two lines might not be necessary.
   force_new_deployment = true
   placement_constraints {
     type = "distinctInstance"
