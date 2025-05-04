@@ -36,14 +36,14 @@ module "instance_sg" {
     {
       from_port   = 0
       to_port     = 0
-      protocol    = "tcp"
+      protocol    = "all"
       cidr_blocks = "0.0.0.0/0"
     }
   ]
 
   egress_with_cidr_blocks = [
     {
-      protocol         = "-1"
+      protocol         = "all"
       from_port        = 0
       to_port          = 0
       cidr_blocks      = "0.0.0.0/0"
