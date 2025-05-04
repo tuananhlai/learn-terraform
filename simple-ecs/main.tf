@@ -268,13 +268,11 @@ resource "aws_ecs_service" "default" {
   }
 }
 
+// Trying opening output.lb_url in your browser. If you see the Nginx welcome page, you've successfully set up your ECS service.
 output "default" {
   value = {
+    lb_url                   = aws_lb.ecs.dns_name
     launch_template_ami_id   = data.aws_ami.amz_linux_2023.id
     launch_template_ami_name = data.aws_ami.amz_linux_2023.name
   }
 }
-
-// Service is created successfully. However, they can not be accessed using
-// the loading balancer or the EC2 instance IP, possibly due to port mapping issues.
-// Will fix later.
