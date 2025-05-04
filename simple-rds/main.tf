@@ -14,12 +14,13 @@ module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 5.0"
 
-  name                 = "simple-rds-vpc"
-  cidr                 = local.default_vpc_cidr
-  azs                  = data.aws_availability_zones.available.names
-  public_subnets       = cidrsubnets(local.default_vpc_cidr, 4, 4, 4)
-  enable_dns_hostnames = true
-  enable_dns_support   = true
+  name                    = "simple-rds-vpc"
+  cidr                    = local.default_vpc_cidr
+  azs                     = data.aws_availability_zones.available.names
+  public_subnets          = cidrsubnets(local.default_vpc_cidr, 4, 4, 4)
+  enable_dns_hostnames    = true
+  enable_dns_support      = true
+  map_public_ip_on_launch = true
 }
 
 resource "random_password" "db_password" {
