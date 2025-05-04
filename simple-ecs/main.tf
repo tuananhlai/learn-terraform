@@ -127,8 +127,8 @@ resource "aws_autoscaling_group" "ecs_asg" {
   name_prefix         = "simple-ecs-asg"
   vpc_zone_identifier = module.vpc.public_subnets
   min_size            = 0
-  desired_capacity    = 1
-  max_size            = 2
+  desired_capacity    = 2
+  max_size            = 3
 
   launch_template {
     id      = aws_launch_template.ecs_lt.id
@@ -190,10 +190,32 @@ resource "aws_ecs_cluster_capacity_providers" "default" {
   }
 }
 
+resource "aws_iam_role" "ecs_execution" {
+  name_prefix = "simple-ecs-execution-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ecs-tasks.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_execution" {
+  role       = aws_iam_role.ecs_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
 resource "aws_ecs_task_definition" "default" {
-  family       = "simple-ecs-task-definition"
-  network_mode = "awsvpc"
-  cpu          = 256
+  family             = "simple-ecs-task-definition"
+  network_mode       = "awsvpc"
+  cpu                = 256
+  execution_role_arn = aws_iam_role.ecs_execution.arn
 
   container_definitions = jsonencode([
     {
@@ -252,3 +274,7 @@ output "default" {
     launch_template_ami_name = data.aws_ami.amz_linux_2023.name
   }
 }
+
+// Service is created successfully. However, they can not be accessed using
+// the loading balancer or the EC2 instance IP, possibly due to port mapping issues.
+// Will fix later.
