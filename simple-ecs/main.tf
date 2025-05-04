@@ -14,12 +14,13 @@ module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
   version = "~> 5.0"
 
-  name                 = "simple-ecs-vpc"
-  cidr                 = local.default_vpc_cidr
-  azs                  = slice(data.aws_availability_zones.available.names, 0, 2)
-  public_subnets       = cidrsubnets(local.default_vpc_cidr, 4, 4)
-  enable_dns_hostnames = true
-  enable_dns_support   = true
+  name                    = "simple-ecs-vpc"
+  cidr                    = local.default_vpc_cidr
+  azs                     = slice(data.aws_availability_zones.available.names, 0, 2)
+  public_subnets          = cidrsubnets(local.default_vpc_cidr, 4, 4)
+  enable_dns_hostnames    = true
+  enable_dns_support      = true
+  map_public_ip_on_launch = true
 }
 
 module "instance_sg" {
@@ -56,19 +57,7 @@ data "aws_ami" "amz_linux_2023" {
   owners      = ["amazon"]
   filter {
     name   = "name"
-    values = ["al2023-ami-20*-kernel-6.1-x86_64"]
-  }
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-  filter {
-    name   = "architecture"
-    values = ["x86_64"]
-  }
-  filter {
-    name   = "root-device-type"
-    values = ["ebs"]
+    values = ["al2023-ami-ecs-hvm-*-kernel-6.1-x86_64"]
   }
 }
 
@@ -115,7 +104,7 @@ resource "aws_launch_template" "ecs_lt" {
   block_device_mappings {
     device_name = "/dev/xvda"
     ebs {
-      volume_size = 10
+      volume_size = 30
       volume_type = "gp2"
     }
   }
@@ -193,6 +182,12 @@ resource "aws_ecs_capacity_provider" "default" {
 resource "aws_ecs_cluster_capacity_providers" "default" {
   cluster_name       = aws_ecs_cluster.default.name
   capacity_providers = [aws_ecs_capacity_provider.default.name]
+
+  default_capacity_provider_strategy {
+    base              = 1
+    weight            = 100
+    capacity_provider = aws_ecs_capacity_provider.default.name
+  }
 }
 
 resource "aws_ecs_task_definition" "default" {
@@ -202,8 +197,8 @@ resource "aws_ecs_task_definition" "default" {
 
   container_definitions = jsonencode([
     {
-      name      = "dockergs"
-      image     = "public.ecr.aws/f9n5f1l7/dgs:latest"
+      name      = "nginx"
+      image     = "nginx:latest"
       cpu       = 256
       memory    = 512
       essential = true
@@ -223,11 +218,11 @@ resource "aws_ecs_task_definition" "default" {
   }
 }
 
-resource "aws_ecs_service" "ecs_service" {
+resource "aws_ecs_service" "default" {
   name            = "simple-ecs-service"
   cluster         = aws_ecs_cluster.default.id
   task_definition = aws_ecs_task_definition.default.arn
-  desired_count   = 2
+  desired_count   = 1
 
   network_configuration {
     subnets         = module.vpc.public_subnets
@@ -239,10 +234,6 @@ resource "aws_ecs_service" "ecs_service" {
     type = "distinctInstance"
   }
 
-  triggers = {
-    redeployment = timestamp()
-  }
-
   capacity_provider_strategy {
     capacity_provider = aws_ecs_capacity_provider.default.name
     weight            = 100
@@ -250,7 +241,14 @@ resource "aws_ecs_service" "ecs_service" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.ecs.arn
-    container_name   = "dockergs"
+    container_name   = "nginx"
     container_port   = 80
+  }
+}
+
+output "default" {
+  value = {
+    launch_template_ami_id   = data.aws_ami.amz_linux_2023.id
+    launch_template_ami_name = data.aws_ami.amz_linux_2023.name
   }
 }
