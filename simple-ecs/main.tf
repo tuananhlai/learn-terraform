@@ -157,8 +157,14 @@ resource "aws_lb_target_group" "ecs" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = module.vpc.vpc_id
-  // (not sure why yet) if `target_type` is removed, there will be an error.
-  // https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lb_target_group#target_type-1
+  // Because our task definition will use `awsvpc` network mode, `target_type` must be `ip`.
+  //
+  // > For services with tasks using the awsvpc network mode, when you create a target group
+  // for your service, you must choose ip as the target type, not instance. This is because
+  // tasks that use the awsvpc network mode are associated with an elastic network interface,
+  // not an Amazon EC2 instance.
+  //
+  // https://docs.aws.amazon.com/AmazonECS/latest/developerguide/alb.html
   target_type = "ip"
 
   health_check {
