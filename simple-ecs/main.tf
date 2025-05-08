@@ -20,6 +20,8 @@ module "vpc" {
   public_subnets       = cidrsubnets(local.default_vpc_cidr, 4, 4)
   enable_dns_hostnames = true
   enable_dns_support   = true
+  // The instances need public IPs so that it can communicate with ECS services.
+  map_public_ip_on_launch = true
 }
 
 module "instance_sg" {
